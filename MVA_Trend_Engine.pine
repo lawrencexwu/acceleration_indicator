@@ -7,14 +7,14 @@ indicator("MVA Trend Engine - Mass Velocity Acceleration", overlay=false, max_ba
 clamp(x, min_val, max_val) => math.max(min_val, math.min(max_val, x))
 
 normalizeRatio(ratio, low, high) =>
-    ratio <= low ? 0.0 :
-    ratio >= high ? 100.0 :
-    100.0 * (ratio - low) / (high - low)
+    (ratio <= low ? 0.0 :
+     ratio >= high ? 100.0 :
+     100.0 * (ratio - low) / (high - low))
 
 normalizeSigned(val, low, high) =>
-    val <= low ? 0.0 :
-    val >= high ? 100.0 :
-    100.0 * (val - low) / (high - low)
+    (val <= low ? 0.0 :
+     val >= high ? 100.0 :
+     100.0 * (val - low) / (high - low))
 
 // --------------------------------------------
 //  Inputs
@@ -215,19 +215,19 @@ else if isCompression
 else
     regime := 6
 
-regimeStr = regime == 0 ? "Compression" :
-            regime == 1 ? "Ignition" :
-            regime == 2 ? "Acceleration" :
-            regime == 3 ? "Mature Trend" :
-            regime == 4 ? "Deceleration" :
-            regime == 5 ? "Breakdown" : "Neutral"
+regimeStr = (regime == 0 ? "Compression" :
+             regime == 1 ? "Ignition" :
+             regime == 2 ? "Acceleration" :
+             regime == 3 ? "Mature Trend" :
+             regime == 4 ? "Deceleration" :
+             regime == 5 ? "Breakdown" : "Neutral")
 
-biasStr = regime == 0 ? "Watch" :
-          regime == 1 ? "Probe" :
-          regime == 2 ? "Hold / Add" :
-          regime == 3 ? "Hold / Trail" :
-          regime == 4 ? "Reduce" :
-          regime == 5 ? "Exit" : "Neutral"
+biasStr = (regime == 0 ? "Watch" :
+           regime == 1 ? "Probe" :
+           regime == 2 ? "Hold / Add" :
+           regime == 3 ? "Hold / Trail" :
+           regime == 4 ? "Reduce" :
+           regime == 5 ? "Exit" : "Neutral")
 
 // --------------------------------------------
 //  SIGNALS
@@ -252,13 +252,13 @@ hline(50, "Neutral", color.new(color.gray, 70))
 hline(35, "Weak", color.new(color.gray, 70))
 
 // Regime Background
-bgColor = showRegimeBackground ?
+bgColor = showRegimeBackground ? (
      regime == 0 ? color.new(color.gray,   85) :
      regime == 1 ? color.new(color.blue,   85) :
      regime == 2 ? color.new(color.green,  85) :
      regime == 3 ? color.new(color.teal,   85) :
      regime == 4 ? color.new(color.orange, 85) :
-     regime == 5 ? color.new(color.red,    85) : na : na
+     regime == 5 ? color.new(color.red,    85) : na) : na
 bgcolor(bgColor)
 
 // Main chart bar coloring (optional)
