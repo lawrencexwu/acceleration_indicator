@@ -56,12 +56,12 @@ obvFast           = ta.ema(obv, obvFastLength)
 obvSlow           = ta.ema(obv, obvSlowLength)
 obvNorm           = (obvFast - obvSlow) / ta.sma(volume, volumeLength)
 
-upVol             = ta.sum(close > close[1] ? volume : 0, trendLength)
-downVol           = ta.sum(close < close[1] ? volume : 0, trendLength)
-upDownRatio       = upVol / math.max(downVol, 1)
+upVol             = ta.sma(close > close[1] ? volume : 0.0, trendLength) * trendLength
+downVol           = ta.sma(close < close[1] ? volume : 0.0, trendLength) * trendLength
+upDownRatio       = upVol / math.max(downVol, 1.0)
 
-vwapSum           = ta.sum(close * volume, trendLength)
-volSum            = ta.sum(volume, trendLength)
+vwapSum           = ta.sma(close * volume, trendLength) * trendLength
+volSum            = ta.sma(volume, trendLength) * trendLength
 rollingVWAP       = volSum > 0 ? vwapSum / volSum : close
 
 atr               = ta.atr(frictionLength)
