@@ -50,7 +50,8 @@ dollarVol         = close * volume
 relDollarVol      = dollarVol / ta.sma(dollarVol, dollarVolumeLength)
 
 directionVol      = close > close[1] ? volume : close < close[1] ? -volume : 0
-obv               = ta.cum(directionVol)
+var float obv     = 0.0
+obv              := obv + directionVol
 obvFast           = ta.ema(obv, obvFastLength)
 obvSlow           = ta.ema(obv, obvSlowLength)
 obvNorm           = (obvFast - obvSlow) / ta.sma(volume, volumeLength)
