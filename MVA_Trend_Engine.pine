@@ -6,146 +6,135 @@ indicator("MVA Trend Engine - Mass Velocity Acceleration", overlay=false, max_ba
 // --------------------------------------------
 clamp(x, min_val, max_val) => math.max(min_val, math.min(max_val, x))
 
-normalizeRatio(ratio, low, high) =>
-    (ratio <= low ? 0.0 :
-     ratio >= high ? 100.0 :
-     100.0 * (ratio - low) / (high - low))
+normalizeRatio(ratio, lo, hi) =>
+    (ratio <= lo ? 0.0 :
+     ratio >= hi ? 100.0 :
+     100.0 * (ratio - lo) / (hi - lo))
 
-normalizeSigned(val, low, high) =>
-    (val <= low ? 0.0 :
-     val >= high ? 100.0 :
-     100.0 * (val - low) / (high - low))
+normalizeSigned(val, lo, hi) =>
+    (val <= lo ? 0.0 :
+     val >= hi ? 100.0 :
+     100.0 * (val - lo) / (hi - lo))
 
 // --------------------------------------------
 //  Inputs
 // --------------------------------------------
-showDashboard          = input.bool(true, "Show Dashboard")
-showRegimeBackground   = input.bool(true, "Show Regime Background")
-colorBars              = input.bool(false, "Color Main Chart Bars")
-showSignals            = input.bool(true, "Show Signal Shapes")
+showDashboard         = input.bool(true,  "Show Dashboard")
+showRegimeBackground  = input.bool(true,  "Show Regime Background")
+colorBars             = input.bool(false, "Color Main Chart Bars")
+showSignals           = input.bool(true,  "Show Signal Shapes")
 
-// Lengths
-volumeLength           = input.int(50, "Volume Length", minval=10)
-dollarVolumeLength     = input.int(50, "Dollar Volume Length", minval=10)
-obvFastLength          = input.int(10, "OBV Fast Length", minval=5)
-obvSlowLength          = input.int(20, "OBV Slow Length", minval=10)
-velocityFastLength     = input.int(5, "Velocity Fast Length", minval=3)
-velocityMediumLength   = input.int(10, "Velocity Medium Length", minval=5)
-trendLength            = input.int(20, "Trend EMA Length", minval=10)
-accelerationLookback   = input.int(5, "Acceleration Lookback", minval=3)
-frictionLength         = input.int(14, "Friction Length", minval=5)
-structureLength        = input.int(50, "Structure Length", minval=20)
+volumeLength          = input.int(50, "Volume Length",          minval=10)
+dollarVolumeLength    = input.int(50, "Dollar Volume Length",   minval=10)
+obvFastLength         = input.int(10, "OBV Fast Length",        minval=5)
+obvSlowLength         = input.int(20, "OBV Slow Length",        minval=10)
+velocityFastLength    = input.int(5,  "Velocity Fast Length",   minval=3)
+velocityMediumLength  = input.int(10, "Velocity Medium Length", minval=5)
+trendLength           = input.int(20, "Trend EMA Length",       minval=10)
+accelerationLookback  = input.int(5,  "Acceleration Lookback",  minval=3)
+frictionLength        = input.int(14, "Friction Length",        minval=5)
+structureLength       = input.int(50, "Structure Length",       minval=20)
 
-// Thresholds
-ignitionThreshold      = input.int(65, "Ignition Threshold", minval=50, maxval=90)
-accelerationThreshold  = input.int(70, "Acceleration Threshold", minval=60, maxval=90)
-decelerationThreshold  = input.int(50, "Deceleration Threshold", minval=30, maxval=70)
-breakdownThreshold     = input.int(40, "Breakdown Threshold", minval=20, maxval=60)
-highFrictionThreshold  = input.int(70, "High Friction Threshold", minval=50, maxval=90)
-relativeVolumeStrong   = input.float(1.5, "Strong Relative Volume", minval=1.0)
-dollarVolumeStrong     = input.float(1.3, "Strong Dollar Volume", minval=1.0)
+ignitionThreshold     = input.int(65, "Ignition Threshold",     minval=50, maxval=90)
+accelerationThreshold = input.int(70, "Acceleration Threshold", minval=60, maxval=90)
+decelerationThreshold = input.int(50, "Deceleration Threshold", minval=30, maxval=70)
+breakdownThreshold    = input.int(40, "Breakdown Threshold",    minval=20, maxval=60)
+highFrictionThreshold = input.int(70, "High Friction Threshold",minval=50, maxval=90)
+relativeVolumeStrong  = input.float(1.5, "Strong Relative Volume", minval=1.0)
 
 // --------------------------------------------
 //  Calculations
 // --------------------------------------------
 
 // Volume & Dollar Volume
-relVolume          = volume / ta.sma(volume, volumeLength)
-dollarVol          = close * volume
-relDollarVol       = dollarVol / ta.sma(dollarVol, dollarVolumeLength)
+relVolume         = volume / ta.sma(volume, volumeLength)
+dollarVol         = close * volume
+relDollarVol      = dollarVol / ta.sma(dollarVol, dollarVolumeLength)
 
 // OBV
-directionVol       = close > close[1] ? volume : close < close[1] ? -volume : 0
-obv                = ta.cum(directionVol)
-obvFast            = ta.ema(obv, obvFastLength)
-obvSlow            = ta.ema(obv, obvSlowLength)
-obvNorm            = (obvFast - obvSlow) / ta.sma(volume, volumeLength)
+directionVol      = close > close[1] ? volume : close < close[1] ? -volume : 0
+obv               = ta.cum(directionVol)
+obvFast           = ta.ema(obv, obvFastLength)
+obvSlow           = ta.ema(obv, obvSlowLength)
+obvNorm           = (obvFast - obvSlow) / ta.sma(volume, volumeLength)
 
-// Up/Down Volume Quality (last trendLength bars)
-upVol              = ta.sum(close > close[1] ? volume : 0, trendLength)
-downVol            = ta.sum(close < close[1] ? volume : 0, trendLength)
-upDownRatio        = upVol / math.max(downVol, 1)
+// Up/Down Volume Quality
+upVol             = ta.sum(close > close[1] ? volume : 0, trendLength)
+downVol           = ta.sum(close < close[1] ? volume : 0, trendLength)
+upDownRatio       = upVol / math.max(downVol, 1)
 
 // Rolling VWAP Proxy
-vwapSum            = ta.sum(close * volume, trendLength)
-volSum             = ta.sum(volume, trendLength)
-rollingVWAP        = volSum > 0 ? vwapSum / volSum : close
+vwapSum           = ta.sum(close * volume, trendLength)
+volSum            = ta.sum(volume, trendLength)
+rollingVWAP       = volSum > 0 ? vwapSum / volSum : close
 
-// ATR
-atr                = ta.atr(frictionLength)
-
-// EMA Trend
-emaTrend           = ta.ema(close, trendLength)
+// ATR & Trend EMA
+atr               = ta.atr(frictionLength)
+emaTrend          = ta.ema(close, trendLength)
 
 // --------------------------------------------
 //  MASS SCORE
 // --------------------------------------------
-relVolScore        = normalizeRatio(relVolume, 0.8, 2.0)
-dollarVolScore     = normalizeRatio(relDollarVol, 0.8, 2.0)
-obvScore           = normalizeSigned(obvNorm, -5, 5)
-upVolQualityScore  = normalizeRatio(upDownRatio, 0.7, 1.8)
-vwapDist           = (close - rollingVWAP) / atr
-vwapScore          = normalizeSigned(vwapDist, -1.0, 2.0)
+relVolScore       = normalizeRatio(relVolume, 0.8, 2.0)
+dollarVolScore    = normalizeRatio(relDollarVol, 0.8, 2.0)
+obvScore          = normalizeSigned(obvNorm, -5.0, 5.0)
+upVolQualityScore = normalizeRatio(upDownRatio, 0.7, 1.8)
+vwapDist          = (close - rollingVWAP) / atr
+vwapScore         = normalizeSigned(vwapDist, -1.0, 2.0)
 
 massScore = clamp(
      0.30 * relVolScore +
      0.25 * dollarVolScore +
      0.20 * obvScore +
      0.15 * upVolQualityScore +
-     0.10 * vwapScore, 0, 100)
+     0.10 * vwapScore, 0.0, 100.0)
 
 // --------------------------------------------
 //  VELOCITY SCORE
 // --------------------------------------------
-fastMove           = close - close[velocityFastLength]
-mediumMove         = close - close[velocityMediumLength]
-fastVel            = fastMove / atr
-mediumVel          = mediumMove / atr
-emaSlope           = (emaTrend - emaTrend[accelerationLookback]) / atr
-priceTrendDist     = (close - emaTrend) / atr
+fastMove      = close - close[velocityFastLength]
+mediumMove    = close - close[velocityMediumLength]
+fastVel       = fastMove / atr
+mediumVel     = mediumMove / atr
+emaSlope      = (emaTrend - emaTrend[accelerationLookback]) / atr
+priceTrendDist = (close - emaTrend) / atr
 
-fastVelScore       = normalizeSigned(fastVel, -2.0, 4.0)
-mediumVelScore     = normalizeSigned(mediumVel, -3.0, 6.0)
-emaSlopeScore      = normalizeSigned(emaSlope, -1.0, 2.5)
-pricePosScore      = normalizeSigned(priceTrendDist, -1.0, 3.0)
+fastVelScore   = normalizeSigned(fastVel, -2.0, 4.0)
+mediumVelScore = normalizeSigned(mediumVel, -3.0, 6.0)
+emaSlopeScore  = normalizeSigned(emaSlope, -1.0, 2.5)
+pricePosScore  = normalizeSigned(priceTrendDist, -1.0, 3.0)
 
 velocityScore = clamp(
      0.35 * fastVelScore +
      0.25 * mediumVelScore +
      0.25 * emaSlopeScore +
-     0.15 * pricePosScore, 0, 100)
+     0.15 * pricePosScore, 0.0, 100.0)
 
 // --------------------------------------------
 //  ACCELERATION SCORE
 // --------------------------------------------
-rawVelocity        = 0.5 * fastVel + 0.3 * mediumVel + 0.2 * emaSlope
-rawAccel           = rawVelocity - rawVelocity[accelerationLookback]
-accelScoreRaw      = normalizeSigned(rawAccel, -2.0, 2.5)
-accelerationScore  = ta.ema(accelScoreRaw, 3)
+rawVelocity       = 0.5 * fastVel + 0.3 * mediumVel + 0.2 * emaSlope
+rawAccel          = rawVelocity - rawVelocity[accelerationLookback]
+accelScoreRaw     = normalizeSigned(rawAccel, -2.0, 2.5)
+accelerationScore = ta.ema(accelScoreRaw, 3)
 
 // --------------------------------------------
 //  FRICTION SCORE
 // --------------------------------------------
-atrBase            = ta.sma(atr, structureLength)
-atrExpansion       = atr / atrBase
-upperWick          = high - math.max(open, close)
-candleRange        = high - low
-upperWickRatio     = upperWick / math.max(candleRange, syminfo.mintick)
-avgUpperWick       = ta.sma(upperWickRatio, frictionLength)
-
-downVolRatio       = downVol / math.max(upVol, 1)
-extension          = math.abs(close - emaTrend) / atr
-
-atrFriction        = normalizeRatio(atrExpansion, 1.0, 2.0)
-wickFriction       = normalizeRatio(avgUpperWick, 0.15, 0.45)
-downVolFriction    = normalizeRatio(downVolRatio, 0.6, 1.5)
-extFriction        = normalizeRatio(extension, 2.0, 5.0)
+atrBase        = ta.sma(atr, structureLength)
+atrExpansion   = atr / atrBase
+upperWick      = high - math.max(open, close)
+candleRange    = high - low
+upperWickRatio = upperWick / math.max(candleRange, syminfo.mintick)
+avgUpperWick   = ta.sma(upperWickRatio, frictionLength)
+downVolRatio   = downVol / math.max(upVol, 1)
+extension      = math.abs(close - emaTrend) / atr
 
 frictionScore = clamp(
-     0.30 * atrFriction +
-     0.25 * wickFriction +
-     0.25 * downVolFriction +
-     0.20 * extFriction, 0, 100)
+     0.30 * normalizeRatio(atrExpansion, 1.0, 2.0) +
+     0.25 * normalizeRatio(avgUpperWick, 0.15, 0.45) +
+     0.25 * normalizeRatio(downVolRatio, 0.6, 1.5) +
+     0.20 * normalizeRatio(extension, 2.0, 5.0), 0.0, 100.0)
 
 // --------------------------------------------
 //  STRUCTURE FILTER
@@ -153,9 +142,9 @@ frictionScore = clamp(
 ema20 = ta.ema(close, 20)
 ema50 = ta.ema(close, 50)
 
-structureBullish = close > ema20 and ema20 > ema50 and ema20 > ema20[5] and ema50 >= ema50[5]
-structureBearish = close < ema20 and ema20 < ema50
-structureScore   = structureBullish ? 100 : structureBearish ? 0 : 50
+structureBullish = (close > ema20 and ema20 > ema50 and ema20 > ema20[5] and ema50 >= ema50[5])
+structureBearish = (close < ema20 and ema20 < ema50)
+structureScore   = structureBullish ? 100.0 : structureBearish ? 0.0 : 50.0
 
 // --------------------------------------------
 //  COMPOSITE MVA SCORE
@@ -165,41 +154,44 @@ mvaScore = clamp(
      0.25 * velocityScore +
      0.30 * accelerationScore +
      0.15 * structureScore -
-     0.20 * frictionScore, 0, 100)
+     0.20 * frictionScore, 0.0, 100.0)
 
 // --------------------------------------------
 //  REGIME CLASSIFICATION
 // --------------------------------------------
-isCompression = massScore < 55 and velocityScore < 55 and accelerationScore >= 40 and accelerationScore <= 60 and frictionScore < 60
+isCompression = (massScore < 55 and velocityScore < 55 and
+                 accelerationScore >= 40 and accelerationScore <= 60 and
+                 frictionScore < 60)
 
-isIgnition = massScore >= ignitionThreshold and
-             velocityScore >= 60 and
-             accelerationScore >= 60 and
-             close > ema20 and
-             relVolume >= relativeVolumeStrong and
-             frictionScore < highFrictionThreshold
+isIgnition = (massScore >= ignitionThreshold and
+              velocityScore >= 60 and
+              accelerationScore >= 60 and
+              close > ema20 and
+              relVolume >= relativeVolumeStrong and
+              frictionScore < highFrictionThreshold)
 
-isAcceleration = massScore >= 65 and
-                 velocityScore >= accelerationThreshold and
-                 accelerationScore >= accelerationThreshold and
-                 structureBullish and
-                 frictionScore < highFrictionThreshold
+isAcceleration = (massScore >= 65 and
+                  velocityScore >= accelerationThreshold and
+                  accelerationScore >= accelerationThreshold and
+                  structureBullish and
+                  frictionScore < highFrictionThreshold)
 
-isMature = structureBullish and
-           velocityScore >= 60 and
-           massScore >= 55 and
-           accelerationScore >= 45 and accelerationScore < accelerationThreshold and
-           frictionScore < highFrictionThreshold
+isMature = (structureBullish and
+            velocityScore >= 60 and
+            massScore >= 55 and
+            accelerationScore >= 45 and
+            accelerationScore < accelerationThreshold and
+            frictionScore < highFrictionThreshold)
 
-isDeceleration = (structureBullish or close > ema50) and
-                 accelerationScore < decelerationThreshold and
-                 frictionScore >= 60
+isDeceleration = ((structureBullish or close > ema50) and
+                  accelerationScore < decelerationThreshold and
+                  frictionScore >= 60)
 
-isBreakdown = (close < ema20 and accelerationScore < 45) or
-              (close < ema50 and velocityScore < 50) or
-              (mvaScore < breakdownThreshold and frictionScore > 60)
+isBreakdown = ((close < ema20 and accelerationScore < 45) or
+               (close < ema50 and velocityScore < 50) or
+               (mvaScore < breakdownThreshold and frictionScore > 60))
 
-var int regime = 6  // 6 = Neutral
+var int regime = 6
 if isBreakdown
     regime := 5
 else if isDeceleration
@@ -232,26 +224,25 @@ biasStr = (regime == 0 ? "Watch" :
 // --------------------------------------------
 //  SIGNALS
 // --------------------------------------------
-ignitionSignal    = regime == 1 and regime[1] != 1
+ignitionSignal     = regime == 1 and regime[1] != 1
 accelerationSignal = regime == 2 and regime[1] != 2
 decelerationSignal = regime == 4 and regime[1] != 4
-breakdownSignal   = regime == 5 and regime[1] != 5
+breakdownSignal    = regime == 5 and regime[1] != 5
 
 // --------------------------------------------
 //  PLOTS
 // --------------------------------------------
-plot(mvaScore,          "MVA Composite",      color.white, 3)
-plot(massScore,         "Mass",               color.blue, 1)
-plot(velocityScore,     "Velocity",           color.green, 1)
-plot(accelerationScore, "Acceleration",       color.lime, 1)
-plot(frictionScore,     "Friction",           color.orange, 1)
+plot(mvaScore,          "MVA Composite", color.white,  3)
+plot(massScore,         "Mass",          color.blue,   1)
+plot(velocityScore,     "Velocity",      color.green,  1)
+plot(accelerationScore, "Acceleration",  color.lime,   1)
+plot(frictionScore,     "Friction",      color.orange, 1)
 
-hline(80, "Strong", color.new(color.gray, 70))
+hline(80, "Strong",   color.new(color.gray, 70))
 hline(65, "Ignition", color.new(color.gray, 70))
-hline(50, "Neutral", color.new(color.gray, 70))
-hline(35, "Weak", color.new(color.gray, 70))
+hline(50, "Neutral",  color.new(color.gray, 70))
+hline(35, "Weak",     color.new(color.gray, 70))
 
-// Regime Background
 bgColor = showRegimeBackground ? (
      regime == 0 ? color.new(color.gray,   85) :
      regime == 1 ? color.new(color.blue,   85) :
@@ -261,67 +252,37 @@ bgColor = showRegimeBackground ? (
      regime == 5 ? color.new(color.red,    85) : na) : na
 bgcolor(bgColor)
 
-// Main chart bar coloring (optional)
-barcolor(colorBars ? (regime == 5 ? color.red : regime == 2 or regime == 3 ? color.green : na) : na)
+barcolor(colorBars ? (regime == 5 ? color.red : (regime == 2 or regime == 3) ? color.green : na) : na)
 
-// Signals
-plotshape(showSignals and ignitionSignal,    title="Ignition",    location=location.bottom, color=color.blue,   style=shape.triangleup,   size=size.small)
-plotshape(showSignals and accelerationSignal, title="Acceleration",location=location.bottom, color=color.lime,   style=shape.circle,       size=size.small)
-plotshape(showSignals and decelerationSignal, title="Deceleration",location=location.top,    color=color.orange, style=shape.triangledown, size=size.small)
-plotshape(showSignals and breakdownSignal,   title="Breakdown",   location=location.top,    color=color.red,    style=shape.xcross,       size=size.small)
+plotshape(showSignals and ignitionSignal,     title="Ignition",     location=location.bottom, color=color.blue,   style=shape.triangleup,   size=size.small)
+plotshape(showSignals and accelerationSignal, title="Acceleration",  location=location.bottom, color=color.lime,   style=shape.circle,       size=size.small)
+plotshape(showSignals and decelerationSignal, title="Deceleration",  location=location.top,    color=color.orange, style=shape.triangledown, size=size.small)
+plotshape(showSignals and breakdownSignal,    title="Breakdown",     location=location.top,    color=color.red,    style=shape.xcross,       size=size.small)
 
 // --------------------------------------------
 //  DASHBOARD
 // --------------------------------------------
 if showDashboard and barstate.islast
-    var table dash = table.new(position.top_right, 2, 10, bgcolor=color.new(color.black, 80), border_width=1)
-
-    table.cell(dash, 0, 0, "Regime",      text_color=color.white)
-    table.cell(dash, 1, 0, regimeStr,     text_color=regime <= 3 ? color.green : regime >= 4 ? color.red : color.yellow)
-
-    table.cell(dash, 0, 1, "Bias",        text_color=color.white)
-    table.cell(dash, 1, 1, biasStr,       text_color=color.white)
-
-    table.cell(dash, 0, 2, "MVA Score",   text_color=color.white)
-    table.cell(dash, 1, 2, str.tostring(math.round(mvaScore)), text_color=color.white)
-
-    table.cell(dash, 0, 3, "Mass",        text_color=color.blue)
-    table.cell(dash, 1, 3, str.tostring(math.round(massScore)), text_color=color.blue)
-
-    table.cell(dash, 0, 4, "Velocity",    text_color=color.green)
-    table.cell(dash, 1, 4, str.tostring(math.round(velocityScore)), text_color=color.green)
-
-    table.cell(dash, 0, 5, "Acceleration",text_color=color.lime)
+    var table dash = table.new(position.top_right, 2, 8, bgcolor=color.new(color.black, 80), border_width=1)
+    table.cell(dash, 0, 0, "Regime",       text_color=color.white)
+    table.cell(dash, 1, 0, regimeStr,      text_color=regime <= 3 ? color.green : regime >= 4 ? color.red : color.yellow)
+    table.cell(dash, 0, 1, "Bias",         text_color=color.white)
+    table.cell(dash, 1, 1, biasStr,        text_color=color.white)
+    table.cell(dash, 0, 2, "MVA Score",    text_color=color.white)
+    table.cell(dash, 1, 2, str.tostring(math.round(mvaScore)),          text_color=color.white)
+    table.cell(dash, 0, 3, "Mass",         text_color=color.blue)
+    table.cell(dash, 1, 3, str.tostring(math.round(massScore)),         text_color=color.blue)
+    table.cell(dash, 0, 4, "Velocity",     text_color=color.green)
+    table.cell(dash, 1, 4, str.tostring(math.round(velocityScore)),     text_color=color.green)
+    table.cell(dash, 0, 5, "Acceleration", text_color=color.lime)
     table.cell(dash, 1, 5, str.tostring(math.round(accelerationScore)), text_color=color.lime)
-
-    table.cell(dash, 0, 6, "Friction",    text_color=color.orange)
-    table.cell(dash, 1, 6, str.tostring(math.round(frictionScore)), text_color=color.orange)
+    table.cell(dash, 0, 6, "Friction",     text_color=color.orange)
+    table.cell(dash, 1, 6, str.tostring(math.round(frictionScore)),     text_color=color.orange)
 
 // --------------------------------------------
 //  ALERTS
 // --------------------------------------------
-alertcondition(ignitionSignal,    title="MVA Ignition",    message="MVA Ignition Signal - {{ticker}} {{interval}} | Regime: {{plot(\"Regime\")}} | MVA: {{plot(\"MVA Composite\")}}")
-alertcondition(accelerationSignal,title="MVA Acceleration",message="MVA Acceleration Confirmed - {{ticker}} {{interval}}")
-alertcondition(decelerationSignal,title="MVA Deceleration",message="MVA Deceleration Warning - {{ticker}} {{interval}}")
-alertcondition(breakdownSignal,   title="MVA Breakdown",   message="MVA Breakdown Signal - {{ticker}} {{interval}}")
-
-// --------------------------------------------
-//  Info
-// --------------------------------------------
-/*
-MVA Trend Engine - Mass Velocity Acceleration
-
-- Mass: Capital participation + trend inertia
-- Velocity: Price attack speed (ATR normalized)
-- Acceleration: Change in velocity
-- Friction: Exhaustion, volatility expansion, selling pressure
-
-Interpretation:
-- 80-100: Strong trend
-- 65-80 : Healthy / Ignition
-- 50-65 : Neutral / Developing
-- < 50   : Weakening -> Risk
-
-Regimes take priority over individual scores.
-This indicator identifies trend quality and regime shifts - it does NOT predict price targets.
-*/
+alertcondition(ignitionSignal,     title="MVA Ignition",     message="MVA Ignition Signal - {{ticker}} {{interval}}")
+alertcondition(accelerationSignal, title="MVA Acceleration",  message="MVA Acceleration Confirmed - {{ticker}} {{interval}}")
+alertcondition(decelerationSignal, title="MVA Deceleration",  message="MVA Deceleration Warning - {{ticker}} {{interval}}")
+alertcondition(breakdownSignal,    title="MVA Breakdown",     message="MVA Breakdown Signal - {{ticker}} {{interval}}")
