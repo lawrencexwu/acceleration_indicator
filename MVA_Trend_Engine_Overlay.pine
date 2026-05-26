@@ -1,0 +1,268 @@
+//@version=6
+indicator("MVA Trend Engine — Overlay Signals", overlay=true, max_bars_back=1000)
+
+// ──────────────────────────────────────────────
+//  Companion overlay for MVA_Trend_Engine.pine
+//  Add BOTH scripts to the same chart.
+//  This one draws regime labels + signals on price candles.
+// ──────────────────────────────────────────────
+
+// ──────────────────────────────────────────────
+//  Inputs (keep in sync with main script)
+// ──────────────────────────────────────────────
+showRegimeLabels       = input.bool(true,  "Show Regime Labels on Bars")
+showSignalArrows       = input.bool(true,  "Show Signal Arrows on Price")
+showRegimeBackground   = input.bool(true,  "Show Regime Background (Price Chart)")
+colorBars              = input.bool(true,  "Color Price Bars by Regime")
+
+volumeLength           = input.int(50,  "Volume Length",          minval=10)
+dollarVolumeLength     = input.int(50,  "Dollar Volume Length",   minval=10)
+obvFastLength          = input.int(10,  "OBV Fast Length",        minval=5)
+obvSlowLength          = input.int(20,  "OBV Slow Length",        minval=10)
+velocityFastLength     = input.int(5,   "Velocity Fast Length",   minval=3)
+velocityMediumLength   = input.int(10,  "Velocity Medium Length", minval=5)
+trendLength            = input.int(20,  "Trend EMA Length",       minval=10)
+accelerationLookback   = input.int(5,   "Acceleration Lookback",  minval=3)
+frictionLength         = input.int(14,  "Friction Length",        minval=5)
+structureLength        = input.int(50,  "Structure Length",       minval=20)
+
+ignitionThreshold      = input.int(65, "Ignition Threshold",      minval=50, maxval=90)
+accelerationThreshold  = input.int(70, "Acceleration Threshold",  minval=60, maxval=90)
+decelerationThreshold  = input.int(50, "Deceleration Threshold",  minval=30, maxval=70)
+breakdownThreshold     = input.int(40, "Breakdown Threshold",     minval=20, maxval=60)
+highFrictionThreshold  = input.int(70, "High Friction Threshold", minval=50, maxval=90)
+relativeVolumeStrong   = input.float(1.5, "Strong Relative Volume", minval=1.0)
+
+// ──────────────────────────────────────────────
+//  Helper Functions
+// ──────────────────────────────────────────────
+clamp(x, min_val, max_val) => math.max(min_val, math.min(max_val, x))
+
+normalizeRatio(ratio, low, high) =>
+    ratio <= low ? 0.0 :
+    ratio >= high ? 100.0 :
+    100.0 * (ratio - low) / (high - low)
+
+normalizeSigned(val, low, high) =>
+    val <= low ? 0.0 :
+    val >= high ? 100.0 :
+    100.0 * (val - low) / (high - low)
+
+// ──────────────────────────────────────────────
+//  Calculations (mirrored from main script)
+// ──────────────────────────────────────────────
+relVolume      = volume / ta.sma(volume, volumeLength)
+dollarVol      = close * volume
+relDollarVol   = dollarVol / ta.sma(dollarVol, dollarVolumeLength)
+
+directionVol   = close > close[1] ? volume : close < close[1] ? -volume : 0
+obv            = ta.cum(directionVol)
+obvFast        = ta.ema(obv, obvFastLength)
+obvSlow        = ta.ema(obv, obvSlowLength)
+obvNorm        = (obvFast - obvSlow) / ta.sma(volume, volumeLength)
+
+upVol          = ta.sum(close > close[1] ? volume : 0, trendLength)
+downVol        = ta.sum(close < close[1] ? volume : 0, trendLength)
+upDownRatio    = upVol / math.max(downVol, 1)
+
+vwapSum        = ta.sum(close * volume, trendLength)
+volSum         = ta.sum(volume, trendLength)
+rollingVWAP    = volSum > 0 ? vwapSum / volSum : close
+
+atr            = ta.atr(frictionLength)
+emaTrend       = ta.ema(close, trendLength)
+
+// Mass Score
+relVolScore       = normalizeRatio(relVolume, 0.8, 2.0)
+dollarVolScore    = normalizeRatio(relDollarVol, 0.8, 2.0)
+obvScore          = normalizeSigned(obvNorm, -5, 5)
+upVolQualityScore = normalizeRatio(upDownRatio, 0.7, 1.8)
+vwapDist          = (close - rollingVWAP) / atr
+vwapScore         = normalizeSigned(vwapDist, -1.0, 2.0)
+
+massScore = clamp(
+     0.30 * relVolScore +
+     0.25 * dollarVolScore +
+     0.20 * obvScore +
+     0.15 * upVolQualityScore +
+     0.10 * vwapScore, 0, 100)
+
+// Velocity Score
+fastMove       = close - close[velocityFastLength]
+mediumMove     = close - close[velocityMediumLength]
+fastVel        = fastMove / atr
+mediumVel      = mediumMove / atr
+emaSlope       = (emaTrend - emaTrend[accelerationLookback]) / atr
+priceTrendDist = (close - emaTrend) / atr
+
+fastVelScore   = normalizeSigned(fastVel, -2.0, 4.0)
+mediumVelScore = normalizeSigned(mediumVel, -3.0, 6.0)
+emaSlopeScore  = normalizeSigned(emaSlope, -1.0, 2.5)
+pricePosScore  = normalizeSigned(priceTrendDist, -1.0, 3.0)
+
+velocityScore = clamp(
+     0.35 * fastVelScore +
+     0.25 * mediumVelScore +
+     0.25 * emaSlopeScore +
+     0.15 * pricePosScore, 0, 100)
+
+// Acceleration Score
+rawVelocity       = 0.5 * fastVel + 0.3 * mediumVel + 0.2 * emaSlope
+rawAccel          = rawVelocity - rawVelocity[accelerationLookback]
+accelScoreRaw     = normalizeSigned(rawAccel, -2.0, 2.5)
+accelerationScore = ta.ema(accelScoreRaw, 3)
+
+// Friction Score
+atrBase        = ta.sma(atr, structureLength)
+atrExpansion   = atr / atrBase
+upperWick      = high - math.max(open, close)
+candleRange    = high - low
+upperWickRatio = upperWick / math.max(candleRange, syminfo.mintick)
+avgUpperWick   = ta.sma(upperWickRatio, frictionLength)
+downVolRatio   = downVol / math.max(upVol, 1)
+extension      = math.abs(close - emaTrend) / atr
+
+frictionScore = clamp(
+     0.30 * normalizeRatio(atrExpansion, 1.0, 2.0) +
+     0.25 * normalizeRatio(avgUpperWick, 0.15, 0.45) +
+     0.25 * normalizeRatio(downVolRatio, 0.6, 1.5) +
+     0.20 * normalizeRatio(extension, 2.0, 5.0), 0, 100)
+
+// Structure
+ema20 = ta.ema(close, 20)
+ema50 = ta.ema(close, 50)
+
+structureBullish = close > ema20 and ema20 > ema50 and ema20 > ema20[5] and ema50 >= ema50[5]
+structureBearish = close < ema20 and ema20 < ema50
+structureScore   = structureBullish ? 100 : structureBearish ? 0 : 50
+
+mvaScore = clamp(
+     0.30 * massScore +
+     0.25 * velocityScore +
+     0.30 * accelerationScore +
+     0.15 * structureScore -
+     0.20 * frictionScore, 0, 100)
+
+// ──────────────────────────────────────────────
+//  Regime Classification
+// ──────────────────────────────────────────────
+isCompression  = massScore < 55 and velocityScore < 55 and accelerationScore >= 40 and accelerationScore <= 60 and frictionScore < 60
+isIgnition     = massScore >= ignitionThreshold and velocityScore >= 60 and accelerationScore >= 60 and close > ema20 and relVolume >= relativeVolumeStrong and frictionScore < highFrictionThreshold
+isAcceleration = massScore >= 65 and velocityScore >= accelerationThreshold and accelerationScore >= accelerationThreshold and structureBullish and frictionScore < highFrictionThreshold
+isMature       = structureBullish and velocityScore >= 60 and massScore >= 55 and accelerationScore >= 45 and accelerationScore < accelerationThreshold and frictionScore < highFrictionThreshold
+isDeceleration = (structureBullish or close > ema50) and accelerationScore < decelerationThreshold and frictionScore >= 60
+isBreakdown    = (close < ema20 and accelerationScore < 45) or (close < ema50 and velocityScore < 50) or (mvaScore < breakdownThreshold and frictionScore > 60)
+
+var int regime = 6
+if isBreakdown
+    regime := 5
+else if isDeceleration
+    regime := 4
+else if isAcceleration
+    regime := 2
+else if isIgnition
+    regime := 1
+else if isMature
+    regime := 3
+else if isCompression
+    regime := 0
+else
+    regime := 6
+
+// ──────────────────────────────────────────────
+//  Regime Change Detection
+// ──────────────────────────────────────────────
+regimeChanged      = regime != regime[1]
+ignitionSignal     = regime == 1 and regime[1] != 1
+accelerationSignal = regime == 2 and regime[1] != 2
+matureSignal       = regime == 3 and regime[1] != 3
+decelerationSignal = regime == 4 and regime[1] != 4
+breakdownSignal    = regime == 5 and regime[1] != 5
+compressionSignal  = regime == 0 and regime[1] != 0
+
+regimeLabel = regime == 0 ? "COIL" :
+              regime == 1 ? "IGN"  :
+              regime == 2 ? "ACCEL":
+              regime == 3 ? "MATRD":
+              regime == 4 ? "DECEL":
+              regime == 5 ? "BRKDN": ""
+
+// ──────────────────────────────────────────────
+//  Bar Colors
+// ──────────────────────────────────────────────
+barcolor(colorBars ?
+     regime == 2 ? color.new(color.green,  0) :
+     regime == 3 ? color.new(color.teal,   0) :
+     regime == 1 ? color.new(color.blue,   20) :
+     regime == 4 ? color.new(color.orange, 0) :
+     regime == 5 ? color.new(color.red,    0) :
+     regime == 0 ? color.new(color.gray,   40) : na : na)
+
+// ──────────────────────────────────────────────
+//  Regime Background on Price Chart
+// ──────────────────────────────────────────────
+bgColor = showRegimeBackground ?
+     regime == 0 ? color.new(color.gray,   90) :
+     regime == 1 ? color.new(color.blue,   90) :
+     regime == 2 ? color.new(color.green,  90) :
+     regime == 3 ? color.new(color.teal,   90) :
+     regime == 4 ? color.new(color.orange, 90) :
+     regime == 5 ? color.new(color.red,    90) : na : na
+bgcolor(bgColor)
+
+// ──────────────────────────────────────────────
+//  Signal Arrows on Price Candles
+// ──────────────────────────────────────────────
+// Entry signals — plotted below the candle low
+plotshape(showSignalArrows and ignitionSignal,
+     title="⚡ Ignition", text="IGN",
+     location=location.belowbar,
+     color=color.blue, textcolor=color.white,
+     style=shape.labelup, size=size.small)
+
+plotshape(showSignalArrows and accelerationSignal,
+     title="🚀 Acceleration", text="ACCEL",
+     location=location.belowbar,
+     color=color.lime, textcolor=color.black,
+     style=shape.labelup, size=size.small)
+
+plotshape(showSignalArrows and matureSignal,
+     title="📈 Mature Trend", text="MATRD",
+     location=location.belowbar,
+     color=color.teal, textcolor=color.white,
+     style=shape.labelup, size=size.tiny)
+
+// Exit/warning signals — plotted above the candle high
+plotshape(showSignalArrows and decelerationSignal,
+     title="⚠️ Deceleration", text="DECEL",
+     location=location.abovebar,
+     color=color.orange, textcolor=color.white,
+     style=shape.labeldown, size=size.small)
+
+plotshape(showSignalArrows and breakdownSignal,
+     title="🔴 Breakdown", text="BRKDN",
+     location=location.abovebar,
+     color=color.red, textcolor=color.white,
+     style=shape.labeldown, size=size.normal)
+
+plotshape(showSignalArrows and compressionSignal,
+     title="⬛ Compression", text="COIL",
+     location=location.abovebar,
+     color=color.gray, textcolor=color.white,
+     style=shape.labeldown, size=size.tiny)
+
+// ──────────────────────────────────────────────
+//  Regime Change Label (every transition)
+// ──────────────────────────────────────────────
+if showRegimeLabels and regimeChanged and regimeLabel != ""
+    labelCol = regime == 0 ? color.gray :
+               regime == 1 ? color.blue :
+               regime == 2 ? color.green :
+               regime == 3 ? color.teal :
+               regime == 4 ? color.orange :
+               regime == 5 ? color.red : color.white
+    labelYLoc = regime >= 4 ? high + atr * 0.3 : low - atr * 0.3
+    labelStyle = regime >= 4 ? label.style_label_down : label.style_label_up
+    label.new(bar_index, labelYLoc, regimeLabel,
+         color=labelCol, textcolor=color.white,
+         style=labelStyle, size=size.small)
