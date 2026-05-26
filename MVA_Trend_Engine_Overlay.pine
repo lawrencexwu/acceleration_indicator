@@ -1,15 +1,15 @@
 //@version=6
-indicator("MVA Trend Engine — Overlay Signals", overlay=true, max_bars_back=1000)
+indicator("MVA Trend Engine - Overlay Signals", overlay=true, max_bars_back=1000)
 
-// ──────────────────────────────────────────────
+// --------------------------------------------
 //  Companion overlay for MVA_Trend_Engine.pine
 //  Add BOTH scripts to the same chart.
 //  This one draws regime labels + signals on price candles.
-// ──────────────────────────────────────────────
+// --------------------------------------------
 
-// ──────────────────────────────────────────────
+// --------------------------------------------
 //  Inputs (keep in sync with main script)
-// ──────────────────────────────────────────────
+// --------------------------------------------
 showRegimeLabels       = input.bool(true,  "Show Regime Labels on Bars")
 showSignalArrows       = input.bool(true,  "Show Signal Arrows on Price")
 showRegimeBackground   = input.bool(true,  "Show Regime Background (Price Chart)")
@@ -33,9 +33,9 @@ breakdownThreshold     = input.int(40, "Breakdown Threshold",     minval=20, max
 highFrictionThreshold  = input.int(70, "High Friction Threshold", minval=50, maxval=90)
 relativeVolumeStrong   = input.float(1.5, "Strong Relative Volume", minval=1.0)
 
-// ──────────────────────────────────────────────
+// --------------------------------------------
 //  Helper Functions
-// ──────────────────────────────────────────────
+// --------------------------------------------
 clamp(x, min_val, max_val) => math.max(min_val, math.min(max_val, x))
 
 normalizeRatio(ratio, low, high) =>
@@ -48,9 +48,9 @@ normalizeSigned(val, low, high) =>
     val >= high ? 100.0 :
     100.0 * (val - low) / (high - low)
 
-// ──────────────────────────────────────────────
+// --------------------------------------------
 //  Calculations (mirrored from main script)
-// ──────────────────────────────────────────────
+// --------------------------------------------
 relVolume      = volume / ta.sma(volume, volumeLength)
 dollarVol      = close * volume
 relDollarVol   = dollarVol / ta.sma(dollarVol, dollarVolumeLength)
@@ -143,9 +143,9 @@ mvaScore = clamp(
      0.15 * structureScore -
      0.20 * frictionScore, 0, 100)
 
-// ──────────────────────────────────────────────
+// --------------------------------------------
 //  Regime Classification
-// ──────────────────────────────────────────────
+// --------------------------------------------
 isCompression  = massScore < 55 and velocityScore < 55 and accelerationScore >= 40 and accelerationScore <= 60 and frictionScore < 60
 isIgnition     = massScore >= ignitionThreshold and velocityScore >= 60 and accelerationScore >= 60 and close > ema20 and relVolume >= relativeVolumeStrong and frictionScore < highFrictionThreshold
 isAcceleration = massScore >= 65 and velocityScore >= accelerationThreshold and accelerationScore >= accelerationThreshold and structureBullish and frictionScore < highFrictionThreshold
@@ -169,9 +169,9 @@ else if isCompression
 else
     regime := 6
 
-// ──────────────────────────────────────────────
+// --------------------------------------------
 //  Regime Change Detection
-// ──────────────────────────────────────────────
+// --------------------------------------------
 regimeChanged      = regime != regime[1]
 ignitionSignal     = regime == 1 and regime[1] != 1
 accelerationSignal = regime == 2 and regime[1] != 2
@@ -187,9 +187,9 @@ regimeLabel = regime == 0 ? "COIL" :
               regime == 4 ? "DECEL":
               regime == 5 ? "BRKDN": ""
 
-// ──────────────────────────────────────────────
+// --------------------------------------------
 //  Bar Colors
-// ──────────────────────────────────────────────
+// --------------------------------------------
 barcolor(colorBars ?
      regime == 2 ? color.new(color.green,  0) :
      regime == 3 ? color.new(color.teal,   0) :
@@ -198,9 +198,9 @@ barcolor(colorBars ?
      regime == 5 ? color.new(color.red,    0) :
      regime == 0 ? color.new(color.gray,   40) : na : na)
 
-// ──────────────────────────────────────────────
+// --------------------------------------------
 //  Regime Background on Price Chart
-// ──────────────────────────────────────────────
+// --------------------------------------------
 bgColor = showRegimeBackground ?
      regime == 0 ? color.new(color.gray,   90) :
      regime == 1 ? color.new(color.blue,   90) :
@@ -210,50 +210,50 @@ bgColor = showRegimeBackground ?
      regime == 5 ? color.new(color.red,    90) : na : na
 bgcolor(bgColor)
 
-// ──────────────────────────────────────────────
+// --------------------------------------------
 //  Signal Arrows on Price Candles
-// ──────────────────────────────────────────────
-// Entry signals — plotted below the candle low
+// --------------------------------------------
+// Entry signals - plotted below the candle low
 plotshape(showSignalArrows and ignitionSignal,
-     title="⚡ Ignition", text="IGN",
+     title="Ignition", text="IGN",
      location=location.belowbar,
      color=color.blue, textcolor=color.white,
      style=shape.labelup, size=size.small)
 
 plotshape(showSignalArrows and accelerationSignal,
-     title="🚀 Acceleration", text="ACCEL",
+     title="Acceleration", text="ACCEL",
      location=location.belowbar,
      color=color.lime, textcolor=color.black,
      style=shape.labelup, size=size.small)
 
 plotshape(showSignalArrows and matureSignal,
-     title="📈 Mature Trend", text="MATRD",
+     title="Mature Trend", text="MATRD",
      location=location.belowbar,
      color=color.teal, textcolor=color.white,
      style=shape.labelup, size=size.tiny)
 
-// Exit/warning signals — plotted above the candle high
+// Exit/warning signals - plotted above the candle high
 plotshape(showSignalArrows and decelerationSignal,
-     title="⚠️ Deceleration", text="DECEL",
+     title="Deceleration", text="DECEL",
      location=location.abovebar,
      color=color.orange, textcolor=color.white,
      style=shape.labeldown, size=size.small)
 
 plotshape(showSignalArrows and breakdownSignal,
-     title="🔴 Breakdown", text="BRKDN",
+     title="Breakdown", text="BRKDN",
      location=location.abovebar,
      color=color.red, textcolor=color.white,
      style=shape.labeldown, size=size.normal)
 
 plotshape(showSignalArrows and compressionSignal,
-     title="⬛ Compression", text="COIL",
+     title="Compression", text="COIL",
      location=location.abovebar,
      color=color.gray, textcolor=color.white,
      style=shape.labeldown, size=size.tiny)
 
-// ──────────────────────────────────────────────
+// --------------------------------------------
 //  Regime Change Label (every transition)
-// ──────────────────────────────────────────────
+// --------------------------------------------
 if showRegimeLabels and regimeChanged and regimeLabel != ""
     labelCol = regime == 0 ? color.gray :
                regime == 1 ? color.blue :
