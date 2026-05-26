@@ -1,5 +1,5 @@
 //@version=6
-indicator("MVA Trend Engine — Mass Velocity Acceleration", overlay=false, max_bars_back=1000)
+indicator("MVA Trend Engine - Mass Velocity Acceleration", overlay=false, max_bars_back=1000)
 
 // ──────────────────────────────────────────────
 //  Helper Functions
@@ -309,7 +309,7 @@ alertcondition(breakdownSignal,   title="MVA Breakdown",   message="MVA Breakdow
 //  Info
 // ──────────────────────────────────────────────
 /*
-MVA Trend Engine — Mass Velocity Acceleration
+MVA Trend Engine - Mass Velocity Acceleration
 
 • Mass: Capital participation + trend inertia
 • Velocity: Price attack speed (ATR normalized)
