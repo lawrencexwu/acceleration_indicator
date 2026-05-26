@@ -41,6 +41,7 @@ decelerationThreshold = input.int(50, "Deceleration Threshold", minval=30, maxva
 breakdownThreshold    = input.int(40, "Breakdown Threshold",    minval=20, maxval=60)
 highFrictionThreshold = input.int(70, "High Friction Threshold",minval=50, maxval=90)
 relativeVolumeStrong  = input.float(1.5, "Strong Relative Volume", minval=1.0)
+confirmBars           = input.int(2,   "Regime Confirm Bars",     minval=1, maxval=5)
 
 // --------------------------------------------
 //  Calculations
@@ -192,21 +193,21 @@ isBreakdown = ((close < ema20 and accelerationScore < 45) or
                (close < ema50 and velocityScore < 50) or
                (mvaScore < breakdownThreshold and frictionScore > 60))
 
-var int regime = 6
-if isBreakdown
-    regime := 5
-else if isDeceleration
-    regime := 4
-else if isAcceleration
-    regime := 2
-else if isIgnition
-    regime := 1
-else if isMature
-    regime := 3
-else if isCompression
-    regime := 0
-else
-    regime := 6
+rawRegime = (isBreakdown    ? 5 :
+             isDeceleration ? 4 :
+             isAcceleration ? 2 :
+             isIgnition     ? 1 :
+             isMature       ? 3 :
+             isCompression  ? 0 : 6)
+
+var int rawPrev  = 6
+var int holdBars = 0
+var int regime   = 6
+
+holdBars := rawRegime == rawPrev ? holdBars + 1 : 1
+rawPrev  := rawRegime
+if holdBars >= confirmBars
+    regime := rawRegime
 
 regimeStr = (regime == 0 ? "Compression" :
              regime == 1 ? "Ignition" :
